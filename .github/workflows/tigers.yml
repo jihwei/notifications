@@ -1,0 +1,43 @@
+name: Tigers Score Notifier
+
+on:
+  # Runs every 10 minutes, but only during the hours a game is likely to be
+  # in progress or wrapping up. Times are UTC. This window covers roughly
+  # 3pm ET through 2am ET, which catches day games, night games, and extras.
+  schedule:
+    - cron: "*/10 0-6,19-23 * * *"
+  # Lets you trigger a run by hand from the Actions tab (handy for testing).
+  workflow_dispatch:
+
+# Needed so the job can commit the small state file back to the repo.
+permissions:
+  contents: write
+
+# If a run is still going when the next fires, skip rather than pile up.
+concurrency:
+  group: tigers-notifier
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Run the notifier
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python tigers_notify.py
+
+      - name: Save which games were announced
+        run: |
+          if [[ -n "$(git status --porcelain notified.json)" ]]; then
+            git config user.name "tigers-notifier"
+            git config user.email "tigers-notifier@users.noreply.github.com"
+            git add notified.json
+            git commit -m "Record announced game [skip ci]"
+            git push
+          else
+            echo "No state change."
+          fi
