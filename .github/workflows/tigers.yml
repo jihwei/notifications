@@ -1,19 +1,14 @@
 name: Tigers Score Notifier
 
 on:
-  # Runs every 10 minutes, but only during the hours a game is likely to be
-  # in progress or wrapping up. Times are UTC. This window covers roughly
-  # 3pm ET through 2am ET, which catches day games, night games, and extras.
+  # Every 10 minutes during evening/night UTC hours (~3pm–2am ET), when
+  # games are in progress or wrapping up.
   schedule:
     - cron: "*/10 0-6,19-23 * * *"
-  # Lets you trigger a run by hand from the Actions tab (handy for testing).
+  # Manual "Run workflow" button in the Actions tab, for testing.
   workflow_dispatch:
 
-# Needed so the job can commit the small state file back to the repo.
-permissions:
-  contents: write
-
-# If a run is still going when the next fires, skip rather than pile up.
+# Don't let two runs overlap; queue the next one instead.
 concurrency:
   group: tigers-notifier
   cancel-in-progress: false
@@ -25,19 +20,32 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
 
+      # Load the "already announced" list from the Actions cache. The exact
+      # key never matches (run_id is unique), so it falls back to restore-keys
+      # and pulls the most recently saved list.
+      - name: Restore announced-games list
+        uses: actions/cache/restore@v4
+        with:
+          path: notified.json
+          key: tigers-notified-${{ github.run_id }}
+          restore-keys: |
+            tigers-notified-
+
       - name: Run the notifier
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: python tigers_notify.py
 
-      - name: Save which games were announced
-        run: |
-          if [[ -n "$(git status --porcelain notified.json)" ]]; then
-            git config user.name "tigers-notifier"
-            git config user.email "tigers-notifier@users.noreply.github.com"
-            git add notified.json
-            git commit -m "Record announced game [skip ci]"
-            git push
-          else
-            echo "No state change."
-          fi
+      # Make sure the file exists even on a run that announced nothing,
+      # so the cache step below always has something to save.
+      - name: Ensure list exists
+        if: always()
+        run: '[ -f notified.json ] || echo "[]" > notified.json'
+
+      # Save the updated list under this run's unique key.
+      - name: Save announced-games list
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: notified.json
+          key: tigers-notified-${{ github.run_id }}
