@@ -310,7 +310,7 @@ def statcast_line(season):
         f"?type=batter&year={season}&position=&team=&filterType=bip"
         "&min=1&csv=true")
     ev = _savant_row(
-        "https://baseballsavant.mlb.com/leaderboard/exit_velocity"
+        "https://baseballsavant.mlb.com/leaderboard/statcast"
         f"?type=batter&year={season}&position=&team=&min=1&csv=true")
 
     parts = []
