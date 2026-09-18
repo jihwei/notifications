@@ -1,0 +1,51 @@
+name: Tigers Score Notifier
+
+on:
+  # Every 10 minutes during evening/night UTC hours (~3pm–2am ET), when
+  # games are in progress or wrapping up.
+  schedule:
+    - cron: "*/10 0-6,19-23 * * *"
+  # Manual "Run workflow" button in the Actions tab, for testing.
+  workflow_dispatch:
+
+# Don't let two runs overlap; queue the next one instead.
+concurrency:
+  group: tigers-notifier
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      # Load the "already announced" list from the Actions cache. The exact
+      # key never matches (run_id is unique), so it falls back to restore-keys
+      # and pulls the most recently saved list.
+      - name: Restore announced-games list
+        uses: actions/cache/restore@v4
+        with:
+          path: notified.json
+          key: tigers-notified-${{ github.run_id }}
+          restore-keys: |
+            tigers-notified-
+
+      - name: Run the notifier
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python tigers_notify.py
+
+      # Make sure the file exists even on a run that announced nothing,
+      # so the cache step below always has something to save.
+      - name: Ensure list exists
+        if: always()
+        run: '[ -f notified.json ] || echo "[]" > notified.json'
+
+      # Save the updated list under this run's unique key.
+      - name: Save announced-games list
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: notified.json
+          key: tigers-notified-${{ github.run_id }}
